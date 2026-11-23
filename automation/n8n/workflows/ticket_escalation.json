@@ -1,0 +1,74 @@
+{
+  "name": "AI-HAS Ticket Escalation and Jira Provisioning",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket-escalation",
+        "responseMode": "onReceived",
+        "responseData": "allEntries"
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "jira_key",
+              "value": "=HAS-{{Math.floor(Math.random() * 9000) + 1000}}"
+            },
+            {
+              "name": "status",
+              "value": "QUEUED_FOR_HANDLER"
+            }
+          ]
+        }
+      },
+      "name": "Format Ticket Payload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://backend:8000/api/v1/mock/ad/reset-password",
+        "method": "POST"
+      },
+      "name": "Mock Jira & Notification Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Format Ticket Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Ticket Payload": {
+      "main": [
+        [
+          {
+            "node": "Mock Jira & Notification Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {}
+}

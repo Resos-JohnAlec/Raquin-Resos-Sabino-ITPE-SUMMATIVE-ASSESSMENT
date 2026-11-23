@@ -1,0 +1,111 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aihas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_has}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ai_has}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aihas-network
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.0
+    container_name: aihas-qdrant
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - aihas-network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: aihas-n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - aihas-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aihas-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-ai_has}
+      - QDRANT_URL=http://qdrant:6333
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_encryption_key_minimum_32_characters_long_12345}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook
+      - SEED_ADMIN_EMAIL=${SEED_ADMIN_EMAIL:-admin@aihas.local}
+      - SEED_ADMIN_PASSWORD=${SEED_ADMIN_PASSWORD:-Admin123!}
+      - SEED_HANDLER_EMAIL=${SEED_HANDLER_EMAIL:-handler@aihas.local}
+      - SEED_HANDLER_PASSWORD=${SEED_HANDLER_PASSWORD:-Handler123!}
+      - SEED_USER_EMAIL=${SEED_USER_EMAIL:-user@aihas.local}
+      - SEED_USER_PASSWORD=${SEED_USER_PASSWORD:-User123!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    networks:
+      - aihas-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aihas-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - aihas-network
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  n8n_data:
+
+networks:
+  aihas-network:
+    driver: bridge
